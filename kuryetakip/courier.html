@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kurye Paneli</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <h1>Kurye Paneli</h1>
+    <div id="courier-login-form">
+        <h2>Kurye Girişi</h2>
+        <input type="email" id="courier-email" placeholder="E-posta">
+        <input type="password" id="courier-password" placeholder="Parola">
+        <button id="courier-login-btn">Giriş Yap</button>
+    </div>
+
+    <div id="courier-panel" style="display: none;">
+        <p>Hoş geldin, <span id="courier-email-display"></span>! | <button id="courier-logout-btn">Çıkış Yap</button></p>
+        <button id="start-tracking-btn">Konum Göndermeye Başla</button>
+        <button id="stop-tracking-btn" style="display: none;">Konum Göndermeyi Durdur</button>
+        <p id="status-message" style="color:red;">UYARI: Konum takibi için bu sayfanın sürekli açık ve ekranın uyanık olması gerekir.</p>
+    </div>
+    
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+
+    <script>
+        // ADIM 1'DE KAYDETTİĞİNİZ FIREBASE CONFIG KODUNU BURAYA YAPIŞTIRIN
+        const firebaseConfig = {
+            apiKey: "...",
+            authDomain: "...",
+            projectId: "...",
+            storageBucket: "...",
+            messagingSenderId: "...",
+            appId: "..."
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        // HTML Elementleri
+        const loginForm = document.getElementById('courier-login-form');
+        const courierPanel = document.getElementById('courier-panel');
+        const emailDisplay = document.getElementById('courier-email-display');
+        const loginBtn = document.getElementById('courier-login-btn');
+        const logoutBtn = document.getElementById('courier-logout-btn');
+        const startBtn = document.getElementById('start-tracking-btn');
+        const stopBtn = document.getElementById('stop-tracking-btn');
+        const statusMessage = document.getElementById('status-message');
+
+        let watchId = null; // Konum izleyici ID'si
+
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                loginForm.style.display = 'none';
+                courierPanel.style.display = 'block';
+                emailDisplay.innerText = user.email;
+            } else {
+                loginForm.style.display = 'block';
+                courierPanel.style.display = 'none';
+                stopTracking(); // Çıkış yapınca takibi durdur
+            }
+        });
+
+        loginBtn.addEventListener('click', () => {
+            const email = document.getElementById('courier-email').value;
+            const pass = document.getElementById('courier-password').value;
+            auth.signInWithEmailAndPassword(email, pass)
+                .catch(error => alert(error.message));
+        });
+
+        logoutBtn.addEventListener('click', () => {
+            auth.signOut();
+        });
+
+        startBtn.addEventListener('click', () => {
+            if (navigator.geolocation) {
+                watchId = navigator.geolocation.watchPosition(updateLocationInFirebase, handleError, {
+                    enableHighAccuracy: true
+                });
+                startBtn.style.display = 'none';
+                stopBtn.style.display = 'inline-block';
+                statusMessage.textContent = "Konumunuz gönderiliyor...";
+                statusMessage.style.color = 'green';
+            } else {
+                alert("Tarayıcınız konum servislerini desteklemiyor.");
+            }
+        });
+
+        stopBtn.addEventListener('click', stopTracking);
+
+        function stopTracking() {
+            if (watchId) {
+                navigator.geolocation.clearWatch(watchId);
+                watchId = null;
+                startBtn.style.display = 'inline-block';
+                stopBtn.style.display = 'none';
+                statusMessage.textContent = "Konum gönderme durduruldu.";
+                statusMessage.style.color = 'orange';
+            }
+        }
+
+        function updateLocationInFirebase(position) {
+            const user = auth.currentUser;
+            if (user) {
+                const { latitude, longitude } = position.coords;
+                db.collection('couriers').doc(user.uid).set({
+                    email: user.email,
+                    location: new firebase.firestore.GeoPoint(latitude, longitude),
+                    lastUpdate: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true }); // merge:true ile var olan diğer alanları silmez
+            }
+        }
+
+        function handleError(error) {
+            alert(`HATA: ${error.message}`);
+        }
+    </script>
+</body>
+</html>
