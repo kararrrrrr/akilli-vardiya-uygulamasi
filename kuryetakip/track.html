@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sipariş Takibi</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <h1>Siparişiniz Yolda!</h1>
+    <p>Kuryeniz harita üzerinde gösteriliyor.</p>
+    <div id="map"></div>
+    <p id="delivery-status"></p>
+
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+        // ADIM 1'DE KAYDETTİĞİNİZ FIREBASE CONFIG KODUNU BURAYA YAPIŞTIRIN
+        const firebaseConfig = {
+            apiKey: "...",
+            authDomain: "...",
+            projectId: "...",
+            storageBucket: "...",
+            messagingSenderId: "...",
+            appId: "..."
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
+        // Harita ve Marker
+        let map;
+        let courierMarker;
+        const statusText = document.getElementById('delivery-status');
+
+        // Sayfa yüklendiğinde çalış
+        window.onload = () => {
+            initMap();
+            
+            // URL'den teslimat ID'sini al
+            const params = new URLSearchParams(window.location.search);
+            const deliveryId = params.get('id');
+
+            if (!deliveryId) {
+                statusText.textContent = "Geçersiz takip linki.";
+                return;
+            }
+
+            listenToDelivery(deliveryId);
+        };
+
+        function initMap() {
+            map = L.map('map').setView([36.8569, 28.6366], 14);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+        }
+
+        let courierListener = null; // Kurye dinleyicisini tutmak için
+
+        function listenToDelivery(deliveryId) {
+            db.collection('deliveries').doc(deliveryId).onSnapshot(doc => {
+                if (!doc.exists) {
+                    statusText.textContent = "Teslimat bulunamadı.";
+                    return;
+                }
+
+                const delivery = doc.data();
+
+                if (delivery.status === 'delivered') {
+                    statusText.textContent = "Siparişiniz teslim edilmiştir. Afiyet olsun!";
+                    if(courierMarker) courierMarker.remove();
+                    if(courierListener) courierListener(); // Kuryeyi dinlemeyi bırak
+                    return;
+                }
+
+                if (delivery.courierId && !courierListener) {
+                   // Sadece ilk defa kurye dinleyicisi oluştur
+                   courierListener = listenToCourierLocation(delivery.courierId);
+                }
+            });
+        }
+        
+        function listenToCourierLocation(courierId){
+            // Bu fonksiyon, kurye dinleyicisini döndürür ki daha sonra durdurabilelim
+            return db.collection('couriers').doc(courierId).onSnapshot(doc => {
+                if (!doc.exists) return;
+                
+                const courier = doc.data();
+                if (courier.location) {
+                    const latLng = [courier.location.latitude, courier.location.longitude];
+                    
+                    if (courierMarker) {
+                        courierMarker.setLatLng(latLng);
+                    } else {
+                        courierMarker = L.marker(latLng).addTo(map)
+                            .bindPopup("Kuryeniz burada").openPopup();
+                    }
+                    map.setView(latLng, 16); // Haritayı kuryenin konumuna odakla
+                }
+            });
+        }
+
+    </script>
+</body>
+</html>
