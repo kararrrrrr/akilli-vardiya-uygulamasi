@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yönetici Paneli</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <h1>Restoran Kurye Takip - Yönetici Paneli</h1>
+
+    <div id="login-form">
+        <h2>Yönetici Girişi</h2>
+        <input type="email" id="admin-email" placeholder="E-posta">
+        <input type="password" id="admin-password" placeholder="Parola">
+        <button id="admin-login-btn">Giriş Yap</button>
+    </div>
+
+    <div id="admin-panel" style="display: none;">
+        <p><span id="admin-email-display"></span> | <button id="admin-logout-btn">Çıkış Yap</button></p>
+        <div id="map"></div>
+        <h3>Kuryeler</h3>
+        <ul id="courier-list"></ul>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+        // ADIM 1'DE KAYDETTİĞİNİZ FIREBASE CONFIG KODUNU BURAYA YAPIŞTIRIN
+        const firebaseConfig = {
+            apiKey: "...",
+            authDomain: "...",
+            projectId: "...",
+            storageBucket: "...",
+            messagingSenderId: "...",
+            appId: "..."
+        };
+
+        // Firebase'i başlat
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        // HTML Elementleri
+        const loginForm = document.getElementById('login-form');
+        const adminPanel = document.getElementById('admin-panel');
+        const adminEmailDisplay = document.getElementById('admin-email-display');
+        const loginBtn = document.getElementById('admin-login-btn');
+        const logoutBtn = document.getElementById('admin-logout-btn');
+
+        // Harita ve Kurye Marker'ları
+        let map;
+        const courierMarkers = {};
+
+        // Kullanıcı giriş durumunu kontrol et
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                // Kullanıcı giriş yapmış
+                loginForm.style.display = 'none';
+                adminPanel.style.display = 'block';
+                adminEmailDisplay.innerText = user.email;
+                initMap();
+                listenToCouriers();
+            } else {
+                // Kullanıcı çıkış yapmış
+                loginForm.style.display = 'block';
+                adminPanel.style.display = 'none';
+                if(map) map.remove();
+            }
+        });
+
+        // Giriş Butonu
+        loginBtn.addEventListener('click', () => {
+            const email = document.getElementById('admin-email').value;
+            const pass = document.getElementById('admin-password').value;
+            auth.signInWithEmailAndPassword(email, pass)
+                .catch(error => alert(error.message));
+        });
+
+        // Çıkış Butonu
+        logoutBtn.addEventListener('click', () => {
+            auth.signOut();
+        });
+
+        // Haritayı Başlat
+        function initMap() {
+            map = L.map('map').setView([36.8569, 28.6366], 13); // Ortaca koordinatları
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(map);
+        }
+
+        // Kuryeleri Gerçek Zamanlı Dinle
+        function listenToCouriers() {
+            db.collection('couriers').onSnapshot(snapshot => {
+                const courierList = document.getElementById('courier-list');
+                courierList.innerHTML = ''; // Listeyi temizle
+
+                snapshot.forEach(doc => {
+                    const courier = doc.data();
+                    const courierId = doc.id;
+
+                    // Kuryeyi listeye ekle
+                    const li = document.createElement('li');
+                    li.textContent = `${courier.name || 'İsimsiz Kurye'} (${courier.email})`;
+                    courierList.appendChild(li);
+
+                    // Haritada marker'ı güncelle/oluştur
+                    if (courier.location) {
+                        const latLng = [courier.location.latitude, courier.location.longitude];
+                        if (courierMarkers[courierId]) {
+                            courierMarkers[courierId].setLatLng(latLng);
+                        } else {
+                            courierMarkers[courierId] = L.marker(latLng).addTo(map)
+                                .bindPopup(courier.name || courier.email);
+                        }
+                    }
+                });
+            });
+        }
+    </script>
+</body>
+</html>
